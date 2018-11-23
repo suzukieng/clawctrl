@@ -251,6 +251,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PA4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : LD3_Pin */
   GPIO_InitStruct.Pin = LD3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -264,6 +270,8 @@ static void MX_GPIO_Init(void)
 
 static void claw_main() {
 
+    int btn_pressed;
+
     switch (state) {
         case STATE_INITIALIZING:
             // TODO: move everything to initial position
@@ -271,18 +279,30 @@ static void claw_main() {
             break;
         case STATE_TRACKING:
             // TODO: move claw according to user inputs, wait for claw button to be pressed
+            btn_pressed = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == GPIO_PIN_RESET;
+            if (btn_pressed) {
+                state = STATE_CLAW;
+            }
             break;
         case STATE_CLAW:
             // TODO: move claw up/down
+            btn_pressed = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == GPIO_PIN_RESET;
+            if (btn_pressed) {
+                state = STATE_DISPENSING;
+            }
             break;
         case STATE_DISPENSING:
             // TODO: dispense goods and reset
+            btn_pressed = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == GPIO_PIN_RESET;
+            if (btn_pressed) {
+                state = STATE_INITIALIZING;
+            }
             break;
         default:
             NVIC_SystemReset();
             break;
     }
-    HAL_Delay(1000);
+    HAL_Delay(100);
     HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_3);
     dump_state();
 }
