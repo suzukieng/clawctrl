@@ -301,7 +301,7 @@ static void claw_main() {
             break;
     }
     HAL_Delay(100);
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_3);
+    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     dump_state();
 }
 
