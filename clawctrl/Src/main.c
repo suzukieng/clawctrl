@@ -269,9 +269,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 static void claw_main() {
-
     int btn_pressed;
-
     switch (state) {
         case STATE_INITIALIZING:
             // TODO: move everything to initial position
@@ -299,7 +297,7 @@ static void claw_main() {
             }
             break;
         default:
-            NVIC_SystemReset();
+            HAL_NVIC_SystemReset();
             break;
     }
     HAL_Delay(100);
@@ -326,7 +324,7 @@ static void dump_state() {
             state_str = "UNKNOWN\n";
             break;
     }
-    HAL_UART_Transmit(&huart2, (uint8_t *)state_str, strlen(state_str), HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart2, (uint8_t *)state_str, (uint16_t) strlen(state_str), HAL_MAX_DELAY);
 }
 
 /* USER CODE END 4 */
