@@ -58,12 +58,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define MTR_DOWN_Pin GPIO_PIN_3
-#define MTR_DOWN_GPIO_Port GPIOE
+#define BUZZER_Pin GPIO_PIN_2
+#define BUZZER_GPIO_Port GPIOE
+#define MTR_UP_Pin GPIO_PIN_3
+#define MTR_UP_GPIO_Port GPIOE
 #define CLAW_ENABLE_Pin GPIO_PIN_5
 #define CLAW_ENABLE_GPIO_Port GPIOE
-#define MTR_UP_Pin GPIO_PIN_6
-#define MTR_UP_GPIO_Port GPIOE
+#define MTR_DOWN_Pin GPIO_PIN_6
+#define MTR_DOWN_GPIO_Port GPIOE
 #define USER_Btn_Pin GPIO_PIN_13
 #define USER_Btn_GPIO_Port GPIOC
 #define MTR_LEFT_Pin GPIO_PIN_7
@@ -128,6 +130,16 @@ void Error_Handler(void);
 #define BTN_1_GPIO_Port GPIOC
 #define BTN_2_Pin GPIO_PIN_2
 #define BTN_2_GPIO_Port GPIOD
+#define LS5_Pin GPIO_PIN_3
+#define LS5_GPIO_Port GPIOD
+#define LS4_Pin GPIO_PIN_4
+#define LS4_GPIO_Port GPIOD
+#define LS3_Pin GPIO_PIN_5
+#define LS3_GPIO_Port GPIOD
+#define LS2_Pin GPIO_PIN_6
+#define LS2_GPIO_Port GPIOD
+#define LS1_Pin GPIO_PIN_7
+#define LS1_GPIO_Port GPIOD
 #define RMII_TX_EN_Pin GPIO_PIN_11
 #define RMII_TX_EN_GPIO_Port GPIOG
 #define RMII_TXD0_Pin GPIO_PIN_13
