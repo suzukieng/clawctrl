@@ -455,11 +455,20 @@ static void MX_GPIO_Init(void)
 
 static void claw_init() {
 
+    HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MTR_BACKWARD_GPIO_Port, MTR_BACKWARD_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
+
     // 2 seconds beep and blink during boot-up sequence
     for (int i = 0; i < 16; i++) {
         uint8_t even = (i % 2 == 0) ? 0 : 1;
         set_buzzer(even);
         set_user_leds(even, even, even);
+        HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
         HAL_Delay(2000 / 16);
     }
 
