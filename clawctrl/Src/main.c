@@ -97,6 +97,7 @@ static void MX_USB_OTG_FS_PCD_Init(void);
 
 static void claw_main(void);
 static void claw_init(void);
+static void claw_reference_move(void);
 static void log_string(const char* str);
 
 static void set_buzzer(uint8_t on);
@@ -462,15 +463,31 @@ static void claw_init() {
     HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
 
-    // 2 seconds beep and blink during boot-up sequence
-    for (int i = 0; i < 16; i++) {
+    // 1 second beep
+    set_buzzer(1);
+    HAL_Delay(1000);
+    set_buzzer(0);
+
+    // 1 second blink LEDS
+    for (int i = 0; i < 8; i++) {
         uint8_t even = (i % 2 == 0) ? 0 : 1;
-        set_buzzer(even);
         set_user_leds(even, even, even);
         HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
         HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
-        HAL_Delay(2000 / 16);
+        HAL_Delay(1000 / 8);
     }
+
+    // do the reference move
+    claw_reference_move();
+
+    // double beep after reference move
+    set_buzzer(1);
+    HAL_Delay(250);
+    set_buzzer(0);
+    HAL_Delay(250);
+    set_buzzer(1);
+    HAL_Delay(250);
+    set_buzzer(0);
 
     // start in initial state
     state = STATE_INITIALIZING;
@@ -511,9 +528,9 @@ static void claw_main() {
 
             // buzz on any limit
             if (ls_1 || ls_2 || ls_3 || ls_4 || ls_5) {
-                set_buzzer(1);
+                set_user_leds(1, 1, 0);
             } else {
-                set_buzzer(0);
+                set_user_leds(1, 0, 0);
             }
 
             btn_red_pressed = HAL_GPIO_ReadPin(BTN_1_GPIO_Port, BTN_1_Pin) == GPIO_PIN_RESET;
@@ -528,8 +545,11 @@ static void claw_main() {
             HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, btn_blue_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
             if (btn_red_pressed && !ls_5) {
-                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
+
+                claw_reference_move();
+                HAL_Delay(1000);
+                //HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+                //HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
             } else if (btn_blue_pressed && !ls_3) {
                 HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_RESET);
                 HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
@@ -604,6 +624,41 @@ static void claw_main() {
     //dump_state();
 }
 
+static void claw_reference_move() {
+    uint8_t ls_2, ls_4, ls_5;
+
+    log_string("REFERENCE MOVE");
+
+    // move claw at upper position
+    ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
+    while (!ls_5) {
+        HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
+        ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
+    }
+    HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+    log_string("UP LIMIT");
+
+    // move claw to left position
+
+    ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
+    while (!ls_4) {
+        HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_RESET);
+        ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
+    }
+    HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
+    log_string("LEFT LIMIT");
+
+    // move claw to front position
+    ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
+    while (!ls_2) {
+        HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_RESET);
+        ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
+    }
+    log_string("FORWARD LIMIT");
+    HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
+
+    log_string("REFERENCE MOVE DONE");
+}
 
 static void log_string(const char* str) {
     HAL_UART_Transmit(&huart3, (uint8_t *)str, (uint16_t) strlen(str), HAL_MAX_DELAY);
