@@ -631,6 +631,7 @@ static void claw_reference_move() {
     while (!ls_5) {
         HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
         ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
+        HAL_Delay(1);
     }
     HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
     log_string("UP LIMIT");
@@ -641,6 +642,7 @@ static void claw_reference_move() {
     while (!ls_4) {
         HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_RESET);
         ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
+        HAL_Delay(1);
     }
     HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
     log_string("LEFT LIMIT");
@@ -650,6 +652,7 @@ static void claw_reference_move() {
     while (!ls_2) {
         HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_RESET);
         ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
+        HAL_Delay(1);
     }
     log_string("FORWARD LIMIT");
     HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
