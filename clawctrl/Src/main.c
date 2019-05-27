@@ -37,6 +37,13 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define DO_REFERENCE_MOVE 1
+
+#define STATE_INITIALIZING 0
+#define STATE_TRACKING 1
+#define STATE_CLAW 2
+#define STATE_DISPENSING 3
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -77,11 +84,6 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-
-#define STATE_INITIALIZING 0
-#define STATE_TRACKING 1
-#define STATE_CLAW 2
-#define STATE_DISPENSING 3
 
 static int state = STATE_INITIALIZING;
 
@@ -478,7 +480,9 @@ static void claw_init() {
     }
 
     // do the reference move
+#if DO_REFERENCE_MOVE
     claw_reference_move();
+#endif
 
     // double beep after reference move
     set_buzzer(1);
