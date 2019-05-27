@@ -545,11 +545,8 @@ static void claw_main() {
             HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, btn_blue_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
             if (btn_red_pressed && !ls_5) {
-
-                claw_reference_move();
-                HAL_Delay(1000);
-                //HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
-                //HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
+                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
             } else if (btn_blue_pressed && !ls_3) {
                 HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_RESET);
                 HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
