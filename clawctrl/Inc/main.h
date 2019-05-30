@@ -66,8 +66,8 @@ void Error_Handler(void);
 #define CLAW_ENABLE_GPIO_Port GPIOE
 #define MTR_DOWN_Pin GPIO_PIN_6
 #define MTR_DOWN_GPIO_Port GPIOE
-#define USER_Btn_Pin GPIO_PIN_13
-#define USER_Btn_GPIO_Port GPIOC
+#define USER_B1_Pin GPIO_PIN_13
+#define USER_B1_GPIO_Port GPIOC
 #define MTR_LEFT_Pin GPIO_PIN_7
 #define MTR_LEFT_GPIO_Port GPIOF
 #define MTR_RIGHT_Pin GPIO_PIN_8

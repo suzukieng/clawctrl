@@ -403,11 +403,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : USER_Btn_Pin */
-  GPIO_InitStruct.Pin = USER_Btn_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : USER_B1_Pin */
+  GPIO_InitStruct.Pin = USER_B1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(USER_B1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : MTR_LEFT_Pin MTR_RIGHT_Pin MTR_BACKWARD_Pin */
   GPIO_InitStruct.Pin = MTR_LEFT_Pin|MTR_RIGHT_Pin|MTR_BACKWARD_Pin;
@@ -498,8 +498,8 @@ static void claw_init() {
 }
 
 static void claw_main() {
-    uint8_t btn_red_pressed;
-    uint8_t btn_blue_pressed;
+    uint8_t btn_red_pressed, btn_blue_pressed;
+    uint8_t user_b1_pressed;
     uint8_t joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed;
     uint8_t ls_1, ls_2, ls_3, ls_4, ls_5;
 
@@ -537,6 +537,7 @@ static void claw_main() {
                 set_user_leds(1, 0, 0);
             }
 
+            user_b1_pressed = HAL_GPIO_ReadPin(USER_B1_GPIO_Port, USER_B1_Pin) == GPIO_PIN_SET;
             btn_red_pressed = HAL_GPIO_ReadPin(BTN_1_GPIO_Port, BTN_1_Pin) == GPIO_PIN_RESET;
             btn_blue_pressed = HAL_GPIO_ReadPin(BTN_2_GPIO_Port, BTN_2_Pin) == GPIO_PIN_RESET;
             joy_up_pressed = HAL_GPIO_ReadPin(JOY_UP_GPIO_Port, JOY_UP_Pin) == GPIO_PIN_RESET;
@@ -547,6 +548,12 @@ static void claw_main() {
             // button LEDs turn on/off when their buttons are pressed
             HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, btn_red_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
             HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, btn_blue_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+            if (user_b1_pressed) {
+                HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_RESET);
+            } else {
+                HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
+            }
 
             if (btn_red_pressed && !ls_5) {
                 HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
