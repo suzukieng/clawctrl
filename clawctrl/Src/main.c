@@ -20,12 +20,13 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "string.h"
+#include "claw_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
 #include "stdint.h"
+#include "string.h"
 
 /* USER CODE END Includes */
 
@@ -41,8 +42,8 @@
 
 #define STATE_INITIALIZING 0
 #define STATE_TRACKING 1
-#define STATE_CLAW 2
-#define STATE_DISPENSING 3
+#define STATE_CLAW_DOWN 2
+#define STATE_CLAW_UP 3
 
 /* USER CODE END PD */
 
@@ -85,7 +86,8 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 
-static int state = STATE_INITIALIZING;
+static uint8_t state = STATE_INITIALIZING;
+static uint32_t tick_at_claw_down = 0;
 
 /* USER CODE END PV */
 
@@ -101,13 +103,6 @@ static void claw_main(void);
 static void claw_init(void);
 static void claw_reference_move(void);
 static void log_string(const char* str);
-
-static void set_buzzer(uint8_t on);
-static void set_user_led1(uint8_t on);
-static void set_user_led2(uint8_t on);
-static void set_user_led3(uint8_t on);
-static void set_user_leds(uint8_t on1, uint8_t on2, uint8_t on3);
-
 
 /* USER CODE END PFP */
 
@@ -436,9 +431,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : JOY_LEFT_Pin JOY_RIGHT_Pin JOY_UP_Pin JOY_DOWN_Pin 
+  /*Configure GPIO pins : JOY_DOWN_Pin JOY_UP_Pin JOY_RIGHT_Pin JOY_LEFT_Pin 
                            BTN_1_Pin */
-  GPIO_InitStruct.Pin = JOY_LEFT_Pin|JOY_RIGHT_Pin|JOY_UP_Pin|JOY_DOWN_Pin 
+  GPIO_InitStruct.Pin = JOY_DOWN_Pin|JOY_UP_Pin|JOY_RIGHT_Pin|JOY_LEFT_Pin 
                           |BTN_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -458,24 +453,22 @@ static void MX_GPIO_Init(void)
 
 static void claw_init() {
 
+    beep(1, 250);
+
     HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_BACKWARD_GPIO_Port, MTR_BACKWARD_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
 
-    // 1 second beep
-    set_buzzer(1);
-    HAL_Delay(1000);
-    set_buzzer(0);
-
-    // 1 second blink LEDS
+    // 1 second blink LEDs
     for (int i = 0; i < 8; i++) {
         uint8_t even = (i % 2 == 0) ? 0 : 1;
         set_user_leds(even, even, even);
-        HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, even ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        set_btn1_led(even);
+        set_btn2_led(even);
         HAL_Delay(1000 / 8);
     }
 
@@ -485,16 +478,11 @@ static void claw_init() {
 #endif
 
     // double beep after reference move
-    set_buzzer(1);
-    HAL_Delay(250);
-    set_buzzer(0);
-    HAL_Delay(250);
-    set_buzzer(1);
-    HAL_Delay(250);
-    set_buzzer(0);
+    beep(2, 250);
 
     // start in initial state
     state = STATE_INITIALIZING;
+    log_string("BOOT COMPLETE -> INITIALIZING");
 }
 
 static void claw_main() {
@@ -517,7 +505,7 @@ static void claw_main() {
             HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
             HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
 
-            HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
 
             log_string("INITIALIZING -> TRACKING");
             state = STATE_TRACKING;
@@ -526,45 +514,30 @@ static void claw_main() {
         case STATE_TRACKING:
             ls_1 = HAL_GPIO_ReadPin(LS1_GPIO_Port, LS1_Pin) == GPIO_PIN_RESET;
             ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
-            ls_3 = HAL_GPIO_ReadPin(LS3_GPIO_Port, LS3_Pin) == GPIO_PIN_RESET;
             ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
-            ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
 
             // buzz on any limit
-            if (ls_1 || ls_2 || ls_3 || ls_4 || ls_5) {
+            if (ls_1 || ls_2 || ls_4) {
                 set_user_leds(1, 1, 0);
             } else {
                 set_user_leds(1, 0, 0);
             }
 
-            user_b1_pressed = HAL_GPIO_ReadPin(USER_B1_GPIO_Port, USER_B1_Pin) == GPIO_PIN_SET;
-            btn_red_pressed = HAL_GPIO_ReadPin(BTN_1_GPIO_Port, BTN_1_Pin) == GPIO_PIN_RESET;
-            btn_blue_pressed = HAL_GPIO_ReadPin(BTN_2_GPIO_Port, BTN_2_Pin) == GPIO_PIN_RESET;
+            btn_red_pressed = read_btn1();
             joy_up_pressed = HAL_GPIO_ReadPin(JOY_UP_GPIO_Port, JOY_UP_Pin) == GPIO_PIN_RESET;
             joy_down_pressed = HAL_GPIO_ReadPin(JOY_DOWN_GPIO_Port, JOY_DOWN_Pin) == GPIO_PIN_RESET;
             joy_left_pressed = HAL_GPIO_ReadPin(JOY_LEFT_GPIO_Port, JOY_LEFT_Pin) == GPIO_PIN_RESET;
             joy_right_pressed = HAL_GPIO_ReadPin(JOY_RIGHT_GPIO_Port, JOY_RIGHT_Pin) == GPIO_PIN_RESET;
 
-            // button LEDs turn on/off when their buttons are pressed
-            HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, btn_red_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, btn_blue_pressed ? GPIO_PIN_SET : GPIO_PIN_RESET);
+            // active button LED is on
+            set_btn1_led(1);
+            set_btn2_led(0);
 
-            if (user_b1_pressed) {
-                HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_RESET);
+            if (btn_red_pressed) {
+                log_string("TRACKING -> CLAW_DOWN");
+                tick_at_claw_down = HAL_GetTick();
+                state = STATE_CLAW_DOWN;
             } else {
-                HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
-            }
-
-            if (btn_red_pressed && !ls_5) {
-                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
-            } else if (btn_blue_pressed && !ls_3) {
-                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_RESET);
-                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
-            } else {
-                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
-
                 // left-right axis
                 if (joy_left_pressed && !ls_4) {
                     HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
@@ -590,38 +563,63 @@ static void claw_main() {
                 }
             }
             break;
-        case STATE_CLAW:
-            HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+        case STATE_CLAW_DOWN:
+            // active button LED is on
+            set_btn1_led(0);
+            set_btn2_led(1);
 
-            HAL_Delay(2500);
+            btn_blue_pressed = read_btn2();
+            ls_3 = read_down_ls();
+            uint32_t now_ticks = HAL_GetTick();
+            if (ls_3) {
+                log_string("CLAW_DOWN -> CLAW_UP [bottom reached]");
+                state = STATE_CLAW_UP;
+                set_user_leds(1, 1, 1);
+                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+            } else if (btn_blue_pressed) {
+                log_string("CLAW_DOWN -> CLAW_UP [button pressed]");
+                state = STATE_CLAW_UP;
+                set_user_leds(1, 1, 1);
+                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+            } else if (now_ticks - tick_at_claw_down > 5000) {
+                log_string("CLAW_DOWN -> CLAW_UP [max sink time reached]");
+                state = STATE_CLAW_UP;
+                set_user_leds(1, 1, 1);
+                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+            } else { // lower claw
+                HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_RESET);
+            }
+            break;
+        case STATE_CLAW_UP:
+            // no buttons are active
+            set_btn1_led(0);
+            set_btn2_led(0);
 
-            HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
+            // grab
             HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_RESET);
 
-            HAL_Delay(1500);
+            HAL_Delay(2000);
 
+            // raise claw
+            HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
             HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
 
-            HAL_Delay(2500);
-
-            HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
-
-            log_string("CLAW -> DISPENSING");
-            state = STATE_DISPENSING;
-            set_user_leds(1, 1, 1);
-
-            break;
-        case STATE_DISPENSING:
-            // TODO: move to hole
+            // move to start position
+            claw_reference_move();
 
             // dispense goods
             HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
-
             HAL_Delay(1000);
-            log_string("DISPENSING -> INITIALIZING");
-            state = STATE_INITIALIZING;
+
+            // audible feedback
+            beep(1, 250);
+
+            log_string("CLAW_UP -> TRACKING");
+            state = STATE_TRACKING;
             set_user_leds(0, 0, 0);
             break;
         default:
@@ -629,43 +627,48 @@ static void claw_main() {
             break;
     }
     HAL_Delay(1);
-    //dump_state();
 }
 
 static void claw_reference_move() {
     uint8_t ls_2, ls_4, ls_5;
-
+    uint32_t ticks_at_start;
     log_string("REFERENCE MOVE");
 
+    // no buttons are active
+    set_btn1_led(0);
+    set_btn2_led(0);
+
     // move claw at upper position
-    ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
-    while (!ls_5) {
+    ticks_at_start = HAL_GetTick();
+    ls_5 = read_up_ls();
+    while (!ls_5 && (HAL_GetTick() - ticks_at_start < 10000)) {
         HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
-        ls_5 = HAL_GPIO_ReadPin(LS5_GPIO_Port, LS5_Pin) == GPIO_PIN_RESET;
+        ls_5 = read_up_ls();
         HAL_Delay(1);
     }
     HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_SET);
-    log_string("UP LIMIT");
+    log_string("UP LIMIT OR MAX MOVE TIME");
 
     // move claw to left position
-
+    ticks_at_start = HAL_GetTick();
     ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
-    while (!ls_4) {
+    while (!ls_4 && (HAL_GetTick() - ticks_at_start < 10000)) {
         HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_RESET);
         ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
     }
     HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_SET);
-    log_string("LEFT LIMIT");
+    log_string("LEFT LIMIT OR MAX MOVE TIME");
 
     // move claw to front position
+    ticks_at_start = HAL_GetTick();
     ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
-    while (!ls_2) {
+    while (!ls_2 && (HAL_GetTick() - ticks_at_start < 10000)) {
         HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_RESET);
         ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
     }
-    log_string("FORWARD LIMIT");
+    log_string("FORWARD LIMIT OR MAX MOVE TIME");
     HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
 
     log_string("REFERENCE MOVE DONE");
@@ -676,28 +679,6 @@ static void log_string(const char* str) {
 
     const char* newline = "\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)newline, 1, HAL_MAX_DELAY);
-}
-
-static void set_user_led1(uint8_t on) {
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-static void set_user_led2(uint8_t on) {
-    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-static void set_user_led3(uint8_t on) {
-    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-static void set_user_leds(uint8_t on1, uint8_t on2, uint8_t on3) {
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, on1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, on2 ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, on3 ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-static void set_buzzer(uint8_t on) {
-    HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
 /* USER CODE END 4 */
