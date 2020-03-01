@@ -20,13 +20,15 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "claw_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
 #include "stdint.h"
 #include "string.h"
+#include "claw_hal.h"
+#include "digiled.h"
+#include "lighteffect.h"
 
 /* USER CODE END Includes */
 
@@ -45,6 +47,8 @@
 #define STATE_CLAW_DOWN 2
 #define STATE_CLAW_UP 3
 
+#define REF_MOVE_TIMEOUT_MS 5000
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,32 +57,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-#if defined ( __ICCARM__ ) /*!< IAR Compiler */
 
-#pragma location=0x30040000
-ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-#pragma location=0x30040060
-ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
-#pragma location=0x30040200
-uint8_t Rx_Buff[ETH_RX_DESC_CNT][ETH_MAX_PACKET_SIZE]; /* Ethernet Receive Buffers */
-
-#elif defined ( __CC_ARM )  /* MDK ARM Compiler */
-
-__attribute__((at(0x30040000))) ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-__attribute__((at(0x30040060))) ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
-__attribute__((at(0x30040200))) uint8_t Rx_Buff[ETH_RX_DESC_CNT][ETH_MAX_PACKET_SIZE]; /* Ethernet Receive Buffer */
-
-#elif defined ( __GNUC__ ) /* GNU Compiler */ 
-
-ETH_DMADescTypeDef DMARxDscrTab[ETH_RX_DESC_CNT] __attribute__((section(".RxDecripSection"))); /* Ethernet Rx DMA Descriptors */
-ETH_DMADescTypeDef DMATxDscrTab[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")));   /* Ethernet Tx DMA Descriptors */
-uint8_t Rx_Buff[ETH_RX_DESC_CNT][ETH_MAX_PACKET_SIZE] __attribute__((section(".RxArraySection"))); /* Ethernet Receive Buffers */
-
-#endif
-
-ETH_TxPacketConfig TxConfig; 
-
-ETH_HandleTypeDef heth;
+SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart3;
 
@@ -94,14 +74,16 @@ static uint32_t tick_at_claw_down = 0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_ETH_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 
 static void claw_main(void);
 static void claw_init(void);
 static void claw_reference_move(void);
+static void led_update_tracking(uint8_t up, uint8_t down, uint8_t left, uint8_t r);
+static void led_rainbow();
 static void log_string(const char* str);
 
 /* USER CODE END PFP */
@@ -140,9 +122,9 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_ETH_Init();
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   claw_init();
@@ -215,7 +197,9 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_USB;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_SPI1
+                              |RCC_PERIPHCLK_USB;
+  PeriphClkInitStruct.Spi123ClockSelection = RCC_SPI123CLKSOURCE_PLL;
   PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
   PeriphClkInitStruct.UsbClockSelection = RCC_USBCLKSOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -228,51 +212,50 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief ETH Initialization Function
+  * @brief SPI1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_ETH_Init(void)
+static void MX_SPI1_Init(void)
 {
 
-  /* USER CODE BEGIN ETH_Init 0 */
+  /* USER CODE BEGIN SPI1_Init 0 */
 
-  /* USER CODE END ETH_Init 0 */
+  /* USER CODE END SPI1_Init 0 */
 
-   uint8_t MACAddr[6] ;
+  /* USER CODE BEGIN SPI1_Init 1 */
 
-  /* USER CODE BEGIN ETH_Init 1 */
-
-  /* USER CODE END ETH_Init 1 */
-  heth.Instance = ETH;
-  MACAddr[0] = 0x00;
-  MACAddr[1] = 0x80;
-  MACAddr[2] = 0xE1;
-  MACAddr[3] = 0x00;
-  MACAddr[4] = 0x00;
-  MACAddr[5] = 0x00;
-  heth.Init.MACAddr = &MACAddr[0];
-  heth.Init.MediaInterface = HAL_ETH_RMII_MODE;
-  heth.Init.TxDesc = DMATxDscrTab;
-  heth.Init.RxDesc = DMARxDscrTab;
-  heth.Init.RxBuffLen = 1524;
-
-  /* USER CODE BEGIN MACADDRESS */
-    
-  /* USER CODE END MACADDRESS */
-
-  if (HAL_ETH_Init(&heth) != HAL_OK)
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_1LINE;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 0x0;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
+  hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  hspi1.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
   }
+  /* USER CODE BEGIN SPI1_Init 2 */
 
-  memset(&TxConfig, 0 , sizeof(ETH_TxPacketConfig));
-  TxConfig.Attributes = ETH_TX_PACKETS_FEATURES_CSUM | ETH_TX_PACKETS_FEATURES_CRCPAD;
-  TxConfig.ChecksumCtrl = ETH_CHECKSUM_IPHDR_PAYLOAD_INSERT_PHDR_CALC;
-  TxConfig.CRCPadCtrl = ETH_CRC_PAD_INSERT;
-  /* USER CODE BEGIN ETH_Init 2 */
-
-  /* USER CODE END ETH_Init 2 */
+  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -411,6 +394,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : RMII_MDC_Pin RMII_RXD0_Pin RMII_RXD1_Pin */
+  GPIO_InitStruct.Pin = RMII_MDC_Pin|RMII_RXD0_Pin|RMII_RXD1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : RMII_REF_CLK_Pin RMII_MDIO_Pin */
+  GPIO_InitStruct.Pin = RMII_REF_CLK_Pin|RMII_MDIO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pins : LD1_Pin LD3_Pin LD2_Pin */
   GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -424,6 +423,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : RMII_TXD1_Pin */
+  GPIO_InitStruct.Pin = RMII_TXD1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
+  HAL_GPIO_Init(RMII_TXD1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USB_OverCurrent_Pin */
   GPIO_InitStruct.Pin = USB_OverCurrent_Pin;
@@ -447,11 +454,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : RMII_TX_EN_Pin RMII_TXD0_Pin */
+  GPIO_InitStruct.Pin = RMII_TX_EN_Pin|RMII_TXD0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
 
 static void claw_init() {
+
+    DigiLed_init(&hspi1);
+    DigiLed_setAllIllumination(31);
 
     beep(1, 250);
 
@@ -470,6 +488,13 @@ static void claw_init() {
         set_btn1_led(even);
         set_btn2_led(even);
         HAL_Delay(1000 / 8);
+
+        if (even) {
+            DigiLed_setAllColor(0, 0, 255);
+        } else {
+            DigiLed_setAllColor(255, 0, 0);
+        }
+        DigiLed_update(1);
     }
 
     // do the reference move
@@ -510,6 +535,7 @@ static void claw_main() {
             log_string("INITIALIZING -> TRACKING");
             state = STATE_TRACKING;
             set_user_leds(1, 0, 0);
+            led_rainbow();
             break;
         case STATE_TRACKING:
             ls_1 = HAL_GPIO_ReadPin(LS1_GPIO_Port, LS1_Pin) == GPIO_PIN_RESET;
@@ -529,6 +555,8 @@ static void claw_main() {
             joy_left_pressed = HAL_GPIO_ReadPin(JOY_LEFT_GPIO_Port, JOY_LEFT_Pin) == GPIO_PIN_RESET;
             joy_right_pressed = HAL_GPIO_ReadPin(JOY_RIGHT_GPIO_Port, JOY_RIGHT_Pin) == GPIO_PIN_RESET;
 
+            led_update_tracking(joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed);
+
             // active button LED is on
             set_btn1_led(1);
             set_btn2_led(0);
@@ -537,6 +565,7 @@ static void claw_main() {
                 log_string("TRACKING -> CLAW_DOWN");
                 tick_at_claw_down = HAL_GetTick();
                 state = STATE_CLAW_DOWN;
+                led_rainbow();
             } else {
                 // left-right axis
                 if (joy_left_pressed && !ls_4) {
@@ -641,7 +670,7 @@ static void claw_reference_move() {
     // move claw at upper position
     ticks_at_start = HAL_GetTick();
     ls_5 = read_up_ls();
-    while (!ls_5 && (HAL_GetTick() - ticks_at_start < 10000)) {
+    while (!ls_5 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
         HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
         ls_5 = read_up_ls();
         HAL_Delay(1);
@@ -652,7 +681,7 @@ static void claw_reference_move() {
     // move claw to left position
     ticks_at_start = HAL_GetTick();
     ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
-    while (!ls_4 && (HAL_GetTick() - ticks_at_start < 10000)) {
+    while (!ls_4 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
         HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_RESET);
         ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
@@ -663,7 +692,7 @@ static void claw_reference_move() {
     // move claw to front position
     ticks_at_start = HAL_GetTick();
     ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
-    while (!ls_2 && (HAL_GetTick() - ticks_at_start < 10000)) {
+    while (!ls_2 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
         HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_RESET);
         ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
@@ -672,6 +701,22 @@ static void claw_reference_move() {
     HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_SET);
 
     log_string("REFERENCE MOVE DONE");
+}
+
+static void led_update_tracking(uint8_t up, uint8_t down, uint8_t left, uint8_t right) {
+    DigiLed_setColor(0, 0, 0, up ? 255 : 0);
+    DigiLed_setColor(1, 0, 0, down ? 255 : 0);
+    DigiLed_setColor(2, 0, 0, left ? 255 : 0);
+    DigiLed_setColor(3, 0, 0, right ? 255 : 0);
+    DigiLed_update(1);
+}
+
+static void led_rainbow() {
+    DigiLed_setColor(0, 255, 0, 0);
+    DigiLed_setColor(1, 0, 255, 0);
+    DigiLed_setColor(2, 0, 0, 255);
+    DigiLed_setColor(3, 255, 255, 255);
+    DigiLed_update(1);
 }
 
 static void log_string(const char* str) {
