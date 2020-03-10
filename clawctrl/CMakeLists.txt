@@ -15,5 +15,5 @@ add_compile_definitions(DSTM32H743xx)
 add_custom_target(clawctrl COMMAND make -C ${clawctrl_SOURCE_DIR}
         CLION_EXE_DIR=${PROJECT_BINARY_DIR})
 
-add_executable (clawctrl_dummy Src/main.c Src/claw_hal.c Inc/colors.h Inc/digiled.h Src/digiled.c Src/lighteffect.h Src/lighteffect.c)
+add_executable (clawctrl_dummy Src/main.c Src/claw_hal.c Inc/colors.h Inc/digiled.h Src/digiled.c Inc/lighteffect.h Src/lighteffect.c)
 

@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "stdint.h"
+#include "stdlib.h"
 #include "string.h"
 #include "claw_hal.h"
 #include "digiled.h"
@@ -49,6 +50,8 @@
 
 #define REF_MOVE_TIMEOUT_MS 5000
 
+#define RANDOM_LED_UPDATE_INTERVAL_MS 200
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -68,6 +71,7 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 static uint8_t state = STATE_INITIALIZING;
 static uint32_t tick_at_claw_down = 0;
+static uint32_t tick_at_last_random_led_switch = 0;
 
 /* USER CODE END PV */
 
@@ -82,8 +86,12 @@ static void MX_SPI1_Init(void);
 static void claw_main(void);
 static void claw_init(void);
 static void claw_reference_move(void);
-static void led_update_tracking(uint8_t up, uint8_t down, uint8_t left, uint8_t r);
-static void led_rainbow();
+
+static void led_init();
+static uint32_t led_rand_red_green_or_blue();
+static void led_random();
+static void led_danger();
+
 static void log_string(const char* str);
 
 /* USER CODE END PFP */
@@ -127,6 +135,7 @@ int main(void)
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
+  led_init();
   claw_init();
 
   /* USER CODE END 2 */
@@ -468,9 +477,6 @@ static void MX_GPIO_Init(void)
 
 static void claw_init() {
 
-    DigiLed_init(&hspi1);
-    DigiLed_setAllIllumination(31);
-
     beep(1, 250);
 
     HAL_GPIO_WritePin(MTR_DOWN_GPIO_Port, MTR_DOWN_Pin, GPIO_PIN_SET);
@@ -481,20 +487,13 @@ static void claw_init() {
     HAL_GPIO_WritePin(MTR_RIGHT_GPIO_Port, MTR_RIGHT_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(CLAW_ENABLE_GPIO_Port, CLAW_ENABLE_Pin, GPIO_PIN_SET);
 
-    // 1 second blink LEDs
+    // 1 second blink button and onboard LEDs
     for (int i = 0; i < 8; i++) {
         uint8_t even = (i % 2 == 0) ? 0 : 1;
         set_user_leds(even, even, even);
         set_btn1_led(even);
         set_btn2_led(even);
         HAL_Delay(1000 / 8);
-
-        if (even) {
-            DigiLed_setAllColor(0, 0, 255);
-        } else {
-            DigiLed_setAllColor(255, 0, 0);
-        }
-        DigiLed_update(1);
     }
 
     // do the reference move
@@ -515,6 +514,7 @@ static void claw_main() {
     uint8_t user_b1_pressed;
     uint8_t joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed;
     uint8_t ls_1, ls_2, ls_3, ls_4, ls_5;
+    uint32_t tick_now = HAL_GetTick();
 
     switch (state) {
         case STATE_INITIALIZING:
@@ -535,12 +535,17 @@ static void claw_main() {
             log_string("INITIALIZING -> TRACKING");
             state = STATE_TRACKING;
             set_user_leds(1, 0, 0);
-            led_rainbow();
+            led_random();
             break;
         case STATE_TRACKING:
             ls_1 = HAL_GPIO_ReadPin(LS1_GPIO_Port, LS1_Pin) == GPIO_PIN_RESET;
             ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
             ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
+
+            if (tick_at_last_random_led_switch < tick_now - RANDOM_LED_UPDATE_INTERVAL_MS) {
+                tick_at_last_random_led_switch = tick_now;
+                led_random();
+            }
 
             // buzz on any limit
             if (ls_1 || ls_2 || ls_4) {
@@ -550,12 +555,13 @@ static void claw_main() {
             }
 
             btn_red_pressed = read_btn1();
+            btn_blue_pressed = read_btn2();
             joy_up_pressed = HAL_GPIO_ReadPin(JOY_UP_GPIO_Port, JOY_UP_Pin) == GPIO_PIN_RESET;
             joy_down_pressed = HAL_GPIO_ReadPin(JOY_DOWN_GPIO_Port, JOY_DOWN_Pin) == GPIO_PIN_RESET;
             joy_left_pressed = HAL_GPIO_ReadPin(JOY_LEFT_GPIO_Port, JOY_LEFT_Pin) == GPIO_PIN_RESET;
             joy_right_pressed = HAL_GPIO_ReadPin(JOY_RIGHT_GPIO_Port, JOY_RIGHT_Pin) == GPIO_PIN_RESET;
 
-            led_update_tracking(joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed);
+            //led_update_tracking(joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed);
 
             // active button LED is on
             set_btn1_led(1);
@@ -565,7 +571,9 @@ static void claw_main() {
                 log_string("TRACKING -> CLAW_DOWN");
                 tick_at_claw_down = HAL_GetTick();
                 state = STATE_CLAW_DOWN;
-                led_rainbow();
+                led_danger();
+            } else if (btn_blue_pressed) {
+                // TODO: some effect
             } else {
                 // left-right axis
                 if (joy_left_pressed && !ls_4) {
@@ -650,6 +658,7 @@ static void claw_main() {
             log_string("CLAW_UP -> TRACKING");
             state = STATE_TRACKING;
             set_user_leds(0, 0, 0);
+            led_random();
             break;
         default:
             HAL_NVIC_SystemReset();
@@ -663,13 +672,16 @@ static void claw_reference_move() {
     uint32_t ticks_at_start;
     log_string("REFERENCE MOVE");
 
+    ticks_at_start = HAL_GetTick();
+
     // no buttons are active
     set_btn1_led(0);
     set_btn2_led(0);
 
     // move claw at upper position
-    ticks_at_start = HAL_GetTick();
     ls_5 = read_up_ls();
+    DigiLed_setAllColor(255, 0, 0);
+    DigiLed_update(1);
     while (!ls_5 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
         HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
         ls_5 = read_up_ls();
@@ -679,6 +691,9 @@ static void claw_reference_move() {
     log_string("UP LIMIT OR MAX MOVE TIME");
 
     // move claw to left position
+    DigiLed_setAllColor(0, 255, 0);
+    DigiLed_update(1);
+
     ticks_at_start = HAL_GetTick();
     ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
     while (!ls_4 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
@@ -690,6 +705,9 @@ static void claw_reference_move() {
     log_string("LEFT LIMIT OR MAX MOVE TIME");
 
     // move claw to front position
+    DigiLed_setAllColor(0, 0, 255);
+    DigiLed_update(1);
+
     ticks_at_start = HAL_GetTick();
     ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
     while (!ls_2 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
@@ -703,19 +721,41 @@ static void claw_reference_move() {
     log_string("REFERENCE MOVE DONE");
 }
 
-static void led_update_tracking(uint8_t up, uint8_t down, uint8_t left, uint8_t right) {
-    DigiLed_setColor(0, 0, 0, up ? 255 : 0);
-    DigiLed_setColor(1, 0, 0, down ? 255 : 0);
-    DigiLed_setColor(2, 0, 0, left ? 255 : 0);
-    DigiLed_setColor(3, 0, 0, right ? 255 : 0);
+static void led_init() {
+    DigiLed_init(&hspi1);
+    DigiLed_setAllIllumination(31);
+    int num_leds = DigiLed_getFrameSize();
+    for (int i = 0; i < num_leds; i++) {
+        DigiLed_setAllColor(0, 0, 0);
+        DigiLed_setRGB(i, led_rand_red_green_or_blue());
+        DigiLed_update(1);
+        HAL_Delay(15);
+    }
+    DigiLed_setAllColor(0, 0, 0);
     DigiLed_update(1);
 }
 
-static void led_rainbow() {
-    DigiLed_setColor(0, 255, 0, 0);
-    DigiLed_setColor(1, 0, 255, 0);
-    DigiLed_setColor(2, 0, 0, 255);
-    DigiLed_setColor(3, 255, 255, 255);
+static uint32_t led_rand_red_green_or_blue() {
+    uint32_t r = rand();
+    if (r & 0x1) {
+        return 0x00ff0000;
+    } else if (r & 0x2) {
+        return 0x0000ff00;
+    } else {
+        return 0x000000ff;
+    }
+}
+
+static void led_random() {
+    int num_leds = DigiLed_getFrameSize();
+    for (int i = 0; i < num_leds; i++) {
+        DigiLed_setRGB(i, led_rand_red_green_or_blue());
+    }
+    DigiLed_update(1);
+}
+
+static void led_danger() {
+    DigiLed_setAllColor(255, 0, 0);
     DigiLed_update(1);
 }
 

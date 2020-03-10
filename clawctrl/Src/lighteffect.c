@@ -1,5 +1,5 @@
 /* includes */
-#include "LightEffect.h"
+#include "lighteffect.h"
 #include "DigiLed.h"
 
 /* functions */
