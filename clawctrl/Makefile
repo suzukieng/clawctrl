@@ -39,7 +39,6 @@ C_SOURCES =  \
 Src/main.c \
 Src/claw_hal.c \
 Src/digiled.c \
-Src/lighteffect.c \
 Src/stm32h7xx_it.c \
 Src/stm32h7xx_hal_msp.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_cortex.c \

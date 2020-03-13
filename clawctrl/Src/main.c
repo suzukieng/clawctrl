@@ -29,7 +29,6 @@
 #include "string.h"
 #include "claw_hal.h"
 #include "digiled.h"
-#include "lighteffect.h"
 
 /* USER CODE END Includes */
 
@@ -48,7 +47,8 @@
 #define STATE_CLAW_DOWN 2
 #define STATE_CLAW_UP 3
 
-#define REF_MOVE_TIMEOUT_MS 5000
+#define REF_MOVE_TIMEOUT_LEFT_FRONT_MS 10000
+#define REF_MOVE_TIMEOUT_UP_MS 10000
 
 #define RANDOM_LED_UPDATE_INTERVAL_MS 200
 
@@ -91,6 +91,8 @@ static void led_init();
 static uint32_t led_rand_red_green_or_blue();
 static void led_random();
 static void led_danger();
+static void led_blast();
+static void led_track_movement(uint8_t forward, uint8_t backward, uint8_t left, uint8_t right);
 
 static void log_string(const char* str);
 
@@ -542,11 +544,6 @@ static void claw_main() {
             ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
             ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
 
-            if (tick_at_last_random_led_switch < tick_now - RANDOM_LED_UPDATE_INTERVAL_MS) {
-                tick_at_last_random_led_switch = tick_now;
-                led_random();
-            }
-
             // buzz on any limit
             if (ls_1 || ls_2 || ls_4) {
                 set_user_leds(1, 1, 0);
@@ -561,7 +558,10 @@ static void claw_main() {
             joy_left_pressed = HAL_GPIO_ReadPin(JOY_LEFT_GPIO_Port, JOY_LEFT_Pin) == GPIO_PIN_RESET;
             joy_right_pressed = HAL_GPIO_ReadPin(JOY_RIGHT_GPIO_Port, JOY_RIGHT_Pin) == GPIO_PIN_RESET;
 
-            //led_update_tracking(joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed);
+            if (tick_at_last_random_led_switch < tick_now - RANDOM_LED_UPDATE_INTERVAL_MS) {
+                tick_at_last_random_led_switch = tick_now;
+                led_track_movement(joy_up_pressed, joy_down_pressed, joy_left_pressed, joy_right_pressed);
+            }
 
             // active button LED is on
             set_btn1_led(1);
@@ -573,7 +573,7 @@ static void claw_main() {
                 state = STATE_CLAW_DOWN;
                 led_danger();
             } else if (btn_blue_pressed) {
-                // TODO: some effect
+                led_blast();
             } else {
                 // left-right axis
                 if (joy_left_pressed && !ls_4) {
@@ -682,7 +682,7 @@ static void claw_reference_move() {
     ls_5 = read_up_ls();
     DigiLed_setAllColor(255, 0, 0);
     DigiLed_update(1);
-    while (!ls_5 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
+    while (!ls_5 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_UP_MS)) {
         HAL_GPIO_WritePin(MTR_UP_GPIO_Port, MTR_UP_Pin, GPIO_PIN_RESET);
         ls_5 = read_up_ls();
         HAL_Delay(1);
@@ -696,7 +696,7 @@ static void claw_reference_move() {
 
     ticks_at_start = HAL_GetTick();
     ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
-    while (!ls_4 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
+    while (!ls_4 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_LEFT_FRONT_MS)) {
         HAL_GPIO_WritePin(MTR_LEFT_GPIO_Port, MTR_LEFT_Pin, GPIO_PIN_RESET);
         ls_4 = HAL_GPIO_ReadPin(LS4_GPIO_Port, LS4_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
@@ -710,7 +710,7 @@ static void claw_reference_move() {
 
     ticks_at_start = HAL_GetTick();
     ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
-    while (!ls_2 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_MS)) {
+    while (!ls_2 && (HAL_GetTick() - ticks_at_start < REF_MOVE_TIMEOUT_LEFT_FRONT_MS)) {
         HAL_GPIO_WritePin(MTR_FORWARD_GPIO_Port, MTR_FORWARD_Pin, GPIO_PIN_RESET);
         ls_2 = HAL_GPIO_ReadPin(LS2_GPIO_Port, LS2_Pin) == GPIO_PIN_RESET;
         HAL_Delay(1);
@@ -757,6 +757,59 @@ static void led_random() {
 static void led_danger() {
     DigiLed_setAllColor(255, 0, 0);
     DigiLed_update(1);
+}
+
+static void led_blast() {
+    DigiLed_setAllColor(255, 255, 255);
+    DigiLed_update(1);
+}
+
+static void led_track_movement(uint8_t forward, uint8_t backward, uint8_t left, uint8_t right) {
+    if (forward) {
+        DigiLed_setAllColor(0, 0, 0);
+        for (int i = 40; i < 80; i++) {
+            DigiLed_setColor(i,0, 255, 0);
+        }
+        for (int i = 0; i < 40; i++) {
+            DigiLed_setColor(i,0, 0, 255);
+        }
+        DigiLed_update(1);
+    } else if (backward) {
+        DigiLed_setAllColor(0, 0, 0);
+        for (int i = 0; i < 40; i++) {
+            DigiLed_setColor(i, 0, 255, 0);
+        }
+        for (int i = 40; i < 80; i++) {
+            DigiLed_setColor(i, 0, 0, 255);
+        }
+        DigiLed_update(1);
+    } else if (left) {
+        DigiLed_setAllColor(0, 0, 0);
+        for (int i = 0; i < 20; i++) {
+            DigiLed_setColor(i, 0, 255, 0);
+        }
+        for (int i = 60; i < 80; i++) {
+            DigiLed_setColor(i, 0, 255, 0);
+        }
+        for (int i = 20; i < 60; i++) {
+            DigiLed_setColor(i, 255, 0, 0);
+        }
+        DigiLed_update(1);
+    } else if (right) {
+        DigiLed_setAllColor(0, 0, 0);
+        for (int i = 0; i < 20; i++) {
+            DigiLed_setColor(i, 255, 0, 0);
+        }
+        for (int i = 60; i < 80; i++) {
+            DigiLed_setColor(i, 255, 0, 0);
+        }
+        for (int i = 20; i < 60; i++) {
+            DigiLed_setColor(i, 0, 255, 0);
+        }
+        DigiLed_update(1);
+    } else {
+        led_random();
+    }
 }
 
 static void log_string(const char* str) {
